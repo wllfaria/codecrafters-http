@@ -31,10 +31,20 @@ fn handle_connection(mut stream: TcpStream) {
         .first()
         .map(|l| l.split_whitespace().skip(1).take(1).collect::<String>())
     {
-        if path == "/" {
-            stream.write_all(b"HTTP/1.1 200 OK\r\n\r\n").unwrap()
-        } else {
-            stream.write_all(b"HTTP/1.1 404 Not Found\r\n\r\n").unwrap()
+        match path.as_str() {
+            "/" => stream.write_all(b"HTTP/1.1 200 OK\r\n\r\n").unwrap(),
+            p if p.starts_with("/echo") => handle_echo(stream, p),
+            _ => stream.write_all(b"HTTP/1.1 404 Not Found\r\n\r\n").unwrap(),
         }
     }
+}
+
+fn handle_echo(mut stream: TcpStream, path: &str) {
+    let str = path.chars().skip(6).collect::<String>();
+    let len = str.len();
+    let mut response = String::from("HTTP/1.1 200 OK\r\n");
+    response.push_str("Content-Type: text/plain\r\n");
+    response.push_str(&format!("Content-Length: {len}\r\n\r\n{str}"));
+
+    stream.write_all(response.as_bytes()).unwrap();
 }
