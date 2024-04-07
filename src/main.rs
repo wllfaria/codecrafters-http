@@ -34,6 +34,7 @@ fn handle_connection(mut stream: TcpStream) {
         match path.as_str() {
             "/" => stream.write_all(b"HTTP/1.1 200 OK\r\n\r\n").unwrap(),
             p if p.starts_with("/echo") => handle_echo(stream, p),
+            p if p.starts_with("/user-agent") => handle_user_agent(stream, &request),
             _ => stream.write_all(b"HTTP/1.1 404 Not Found\r\n\r\n").unwrap(),
         }
     }
@@ -47,4 +48,15 @@ fn handle_echo(mut stream: TcpStream, path: &str) {
     response.push_str(&format!("Content-Length: {len}\r\n\r\n{str}"));
 
     stream.write_all(response.as_bytes()).unwrap();
+}
+
+fn handle_user_agent(mut stream: TcpStream, req: &[String]) {
+    if let Some(user_agent) = req.iter().find(|l| l.starts_with("User-Agent")) {
+        let len = user_agent.len();
+        let mut response = String::from("HTTP/1.1 200 OK\r\n");
+        response.push_str("Content-Type: text/plain\r\n");
+        response.push_str(&format!("Content-Length: {len}\r\n\r\n{user_agent}"));
+
+        stream.write_all(response.as_bytes()).unwrap();
+    }
 }
