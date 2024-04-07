@@ -51,7 +51,11 @@ fn handle_echo(mut stream: TcpStream, path: &str) {
 }
 
 fn handle_user_agent(mut stream: TcpStream, req: &[String]) {
-    if let Some(user_agent) = req.iter().find(|l| l.starts_with("User-Agent")) {
+    if let Some((_, user_agent)) = req
+        .iter()
+        .find(|l| l.starts_with("User-Agent"))
+        .and_then(|l| l.split_once(' '))
+    {
         let len = user_agent.len();
         let mut response = String::from("HTTP/1.1 200 OK\r\n");
         response.push_str("Content-Type: text/plain\r\n");
