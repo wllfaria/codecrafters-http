@@ -41,7 +41,7 @@ fn handle_connection(mut stream: TcpStream) -> anyhow::Result<()> {
         }
         let parts = path.split('/').collect::<Vec<_>>();
         match parts[1] {
-            "echo" => handle_echo(stream, parts[2])?,
+            "echo" => handle_echo(stream, &parts[2..])?,
             "user-agent" => handle_user_agent(stream, &request)?,
             "files" => handle_file_read(stream, parts[2])?,
             _ => stream.write_all(b"HTTP/1.1 404 Not Found\r\n\r\n")?,
@@ -51,8 +51,8 @@ fn handle_connection(mut stream: TcpStream) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn handle_echo(mut stream: TcpStream, path: &str) -> anyhow::Result<()> {
-    let str = path.chars().skip(6).collect::<String>();
+fn handle_echo(mut stream: TcpStream, path: &[&str]) -> anyhow::Result<()> {
+    let str = path.join("/");
     let len = str.len();
     let mut response = String::from("HTTP/1.1 200 OK\r\n");
     response.push_str("Content-Type: text/plain\r\n");
