@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    io::{BufRead, BufReader, Write},
+    io::{BufRead, BufReader, Read, Write},
     net::{TcpListener, TcpStream},
     path::PathBuf,
 };
@@ -24,26 +24,46 @@ async fn main() -> anyhow::Result<()> {
 }
 
 fn handle_connection(mut stream: TcpStream) -> anyhow::Result<()> {
-    let buf_reader = BufReader::new(&mut stream);
+    let mut buf_reader = BufReader::new(&mut stream);
 
     let request: Vec<_> = buf_reader
+        .by_ref()
         .lines()
         .map(|l| l.expect("request should never be empty"))
         .take_while(|l| !l.is_empty())
         .collect();
 
-    if let Some(path) = request
+    let content_length = request.iter().find_map(|line| {
+        let parts: Vec<_> = line.splitn(2, ':').collect();
+        if parts[0].to_lowercase() == "content-length" {
+            parts.get(1)?.trim().parse().ok()
+        } else {
+            None
+        }
+    });
+
+    let body = if let Some(length) = content_length {
+        let mut body = vec![0; length];
+        buf_reader.read_exact(&mut body)?;
+        String::from_utf8(body).unwrap_or_default()
+    } else {
+        String::new()
+    };
+
+    if let Some((method, path)) = request
         .first()
-        .map(|l| l.split_whitespace().skip(1).take(1).collect::<String>())
+        .map(|l| l.split_whitespace().collect::<Vec<_>>())
+        .map(|parts| (parts[0], parts[1]))
     {
         if path == "/" {
             stream.write_all(b"HTTP/1.1 200 OK\r\n\r\n")?;
         }
         let parts = path.split('/').collect::<Vec<_>>();
-        match parts[1] {
-            "echo" => handle_echo(stream, &parts[2..])?,
-            "user-agent" => handle_user_agent(stream, &request)?,
-            "files" => handle_file_read(stream, parts[2])?,
+        match (method, parts[1]) {
+            ("GET", "echo") => handle_echo(stream, &parts[2..])?,
+            ("GET", "user-agent") => handle_user_agent(stream, &request)?,
+            ("GET", "files") => handle_file_read(stream, parts[2])?,
+            ("POST", "files") => handle_create_file(stream, parts[2], &body)?,
             _ => stream.write_all(b"HTTP/1.1 404 Not Found\r\n\r\n")?,
         }
     }
@@ -83,8 +103,6 @@ fn handle_user_agent(mut stream: TcpStream, req: &[String]) -> anyhow::Result<()
 fn handle_file_read(mut stream: TcpStream, path: &str) -> anyhow::Result<()> {
     if let Some(dir) = std::env::args().last() {
         let dir_path = PathBuf::from(dir);
-        let file_path = dir_path.join("files").join(path);
-        println!("{file_path:?}");
         if dir_path.exists() && dir_path.is_dir() {
             let file_path = dir_path.join(path);
             match File::open(file_path) {
@@ -108,5 +126,19 @@ fn handle_file_read(mut stream: TcpStream, path: &str) -> anyhow::Result<()> {
         }
     }
 
+    Ok(())
+}
+
+fn handle_create_file(mut stream: TcpStream, filename: &str, body: &str) -> anyhow::Result<()> {
+    if let Some(dir) = std::env::args().last() {
+        let dir_path = PathBuf::from(dir);
+        if dir_path.exists() && dir_path.is_dir() {
+            let file_path = dir_path.join(filename);
+            std::fs::write(file_path, body)?;
+            stream.write_all(b"HTTP/1.1 201 Created\r\n\r\n")?;
+        } else {
+            stream.write_all(b"HTTP/1.1 404 Not Found\r\n\r\n")?;
+        }
+    }
     Ok(())
 }
