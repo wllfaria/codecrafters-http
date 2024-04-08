@@ -83,19 +83,28 @@ fn handle_user_agent(mut stream: TcpStream, req: &[String]) -> anyhow::Result<()
 fn handle_file_read(mut stream: TcpStream, path: &str) -> anyhow::Result<()> {
     if let Some(dir) = std::env::args().last() {
         let dir_path = PathBuf::from(dir);
+        let file_path = dir_path.join("files").join(path);
+        println!("{file_path:?}");
         if dir_path.exists() && dir_path.is_dir() {
-            let file_path = dir_path.join("files").join(path);
-            if let Ok(mut file) = File::open(file_path) {
-                let len = file
-                    .metadata()
-                    .expect("file metadata was not acessible")
-                    .len();
-                let mut response = String::from("HTTP/1.1 200 OK\r\n");
-                response.push_str("Content-Type: application/octet-stream");
-                response.push_str(&format!("Content-Length: {}\r\n\r\n", len));
-                stream.write_all(response.as_bytes())?;
-                std::io::copy(&mut file, &mut stream)?;
+            let file_path = dir_path.join(path);
+            match File::open(file_path) {
+                Ok(mut file) => {
+                    let len = file
+                        .metadata()
+                        .expect("file metadata was not acessible")
+                        .len();
+                    let mut response = String::from("HTTP/1.1 200 OK\r\n");
+                    response.push_str("Content-Type: application/octet-stream\r\n");
+                    response.push_str(&format!("Content-Length: {}\r\n\r\n", len));
+                    stream.write_all(response.as_bytes())?;
+                    std::io::copy(&mut file, &mut stream)?;
+                }
+                Err(_) => {
+                    stream.write_all(b"HTTP/1.1 404 Not Found\r\n\r\n")?;
+                }
             }
+        } else {
+            stream.write_all(b"HTTP/1.1 404 Not Found\r\n\r\n")?;
         }
     }
 
